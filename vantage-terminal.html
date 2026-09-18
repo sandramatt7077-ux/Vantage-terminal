@@ -1,0 +1,1897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vantage — Synthetic Indices Terminal</title>
+<style>
+  :root{
+    --bg: #0a0d10;
+    --panel: #10151a;
+    --panel-2: #151b22;
+    --line: #212a33;
+    --line-soft: #1a2129;
+    --text: #d8e0e6;
+    --text-dim: #7c8a96;
+    --text-faint: #4a5761;
+    --up: #3ddc84;
+    --up-dim: #1f6e46;
+    --down: #ff5c6c;
+    --down-dim: #7a2b33;
+    --amber: #e8a23d;
+    --signal-strong: #3ddc84;
+    --signal-weak: #e8a23d;
+    --signal-none: #4a5761;
+    --mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+
+  ::selection { background: var(--up-dim); color: #fff; }
+
+  a { color: inherit; }
+
+  button {
+    font-family: var(--sans);
+    cursor: pointer;
+    border: none;
+    background: none;
+    color: inherit;
+  }
+  button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 2px solid var(--up);
+    outline-offset: 1px;
+  }
+
+  input, select {
+    font-family: var(--mono);
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    color: var(--text);
+    padding: 8px 10px;
+    border-radius: 3px;
+    font-size: 13px;
+    width: 100%;
+  }
+  input::placeholder { color: var(--text-faint); }
+
+  .mono { font-family: var(--mono); }
+
+  /* ===== Layout shell ===== */
+  #app { display: flex; flex-direction: column; height: 100vh; }
+
+  header.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    height: 52px;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+    flex-shrink: 0;
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    font-size: 15px;
+  }
+  .brand .mark {
+    width: 18px; height: 18px;
+    position: relative;
+  }
+  .brand .mark svg { width: 100%; height: 100%; display: block; }
+
+  .conn-status {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--text-faint);
+    display: inline-block;
+    margin-right: 6px;
+    box-shadow: 0 0 0 0 rgba(61,220,132,0.5);
+  }
+  .dot.live { background: var(--up); animation: pulse-dot 2s infinite; }
+  .dot.err { background: var(--down); }
+  @keyframes pulse-dot {
+    0% { box-shadow: 0 0 0 0 rgba(61,220,132,0.45); }
+    70% { box-shadow: 0 0 0 6px rgba(61,220,132,0); }
+    100% { box-shadow: 0 0 0 0 rgba(61,220,132,0); }
+  }
+
+  .balance-pill {
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 5px 12px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    background: var(--panel-2);
+  }
+  .balance-pill .amt { color: var(--text); font-weight: 600; }
+
+  .topbar-actions { display: flex; align-items: center; gap: 10px; }
+  .btn {
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 7px 14px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    color: var(--text-dim);
+    transition: border-color .15s, color .15s;
+  }
+  .btn:hover { border-color: var(--text-dim); color: var(--text); }
+  .btn.primary { border-color: var(--up-dim); color: var(--up); }
+  .btn.primary:hover { border-color: var(--up); background: rgba(61,220,132,0.07); }
+
+  /* ===== Main grid ===== */
+  main.grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 240px 1fr 320px;
+    grid-template-rows: 1fr auto;
+    overflow: hidden;
+  }
+
+  /* Market list */
+  aside.markets {
+    grid-row: 1 / 3;
+    border-right: 1px solid var(--line);
+    background: var(--panel);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+  .markets-head {
+    padding: 14px 16px 8px;
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    color: var(--text-faint);
+    font-family: var(--mono);
+    position: sticky;
+    top: 0;
+    background: var(--panel);
+  }
+  .market-item {
+    padding: 10px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    transition: background .1s;
+  }
+  .market-item:hover { background: var(--panel-2); }
+  .market-item.active {
+    background: var(--panel-2);
+    border-left-color: var(--up);
+  }
+  .market-item .name { font-size: 13px; font-weight: 500; }
+  .market-item .row2 {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .market-item .row2 .chg.up { color: var(--up); }
+  .market-item .row2 .chg.down { color: var(--down); }
+
+  /* Chart / center panel */
+  section.chart-panel {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-right: 1px solid var(--line);
+  }
+  .chart-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 14px 18px 10px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .chart-head .sym {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .chart-head .price {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 600;
+    margin-left: 14px;
+  }
+  .chart-head .price.up { color: var(--up); }
+  .chart-head .price.down { color: var(--down); }
+  .chart-head .meta {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    display: flex;
+    gap: 16px;
+  }
+
+  #chartCanvas { width: 100%; flex: 1; display: block; }
+
+  .chart-footer {
+    display: flex;
+    gap: 6px;
+    padding: 8px 18px;
+    border-top: 1px solid var(--line-soft);
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .tf-btn {
+    padding: 4px 10px;
+    border-radius: 3px;
+    color: var(--text-faint);
+    border: 1px solid transparent;
+  }
+  .tf-btn:hover { color: var(--text-dim); }
+  .tf-btn.active {
+    color: var(--text);
+    border-color: var(--line);
+    background: var(--panel-2);
+  }
+
+  /* Analysis panel (bottom center) */
+  section.analysis-panel {
+    grid-column: 2;
+    grid-row: 2;
+    border-right: 1px solid var(--line);
+    border-top: 1px solid var(--line);
+    background: var(--panel);
+    padding: 14px 18px 16px;
+    max-height: 230px;
+    overflow-y: auto;
+  }
+  .analysis-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .analysis-head h2 {
+    font-size: 12px;
+    letter-spacing: 0.03em;
+    color: var(--text-faint);
+    font-weight: 500;
+    font-family: var(--mono);
+  }
+  .sample-note {
+    font-size: 11px;
+    color: var(--text-faint);
+    font-family: var(--mono);
+  }
+
+  .signal-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .signal-card {
+    flex: 1;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 10px 12px;
+    position: relative;
+    overflow: hidden;
+  }
+  .signal-card.lead {
+    border-color: var(--line);
+  }
+  .signal-card .label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-faint);
+    letter-spacing: 0.02em;
+    margin-bottom: 4px;
+  }
+  .signal-card .value {
+    font-size: 15px;
+    font-weight: 600;
+  }
+  .signal-card .value.up { color: var(--up); }
+  .signal-card .value.down { color: var(--down); }
+  .signal-card .sub {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  .conf-bar-track {
+    height: 4px;
+    background: var(--line-soft);
+    border-radius: 2px;
+    margin-top: 8px;
+    overflow: hidden;
+  }
+  .conf-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width .3s ease;
+  }
+
+  .indicators-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+  .ind-cell {
+    background: var(--panel-2);
+    border: 1px solid var(--line-soft);
+    border-radius: 3px;
+    padding: 7px 10px;
+  }
+  .ind-cell .k {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-faint);
+  }
+  .ind-cell .v {
+    font-family: var(--mono);
+    font-size: 13px;
+    margin-top: 2px;
+  }
+  .ind-cell .v.bull { color: var(--up); }
+  .ind-cell .v.bear { color: var(--down); }
+  .ind-cell .v.neutral { color: var(--text-dim); }
+
+  .disclaimer-strip {
+    margin-top: 12px;
+    padding: 8px 10px;
+    background: rgba(232,162,61,0.06);
+    border: 1px solid rgba(232,162,61,0.25);
+    border-radius: 3px;
+    font-size: 11px;
+    color: var(--amber);
+    line-height: 1.5;
+  }
+
+  /* Trade ticket (right) */
+  aside.ticket {
+    grid-column: 3;
+    grid-row: 1 / 3;
+    background: var(--panel);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ticket-section {
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  .ticket-section h3 {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    color: var(--text-faint);
+    margin-bottom: 10px;
+    font-weight: 500;
+  }
+
+  .field { margin-bottom: 10px; }
+  .field label {
+    display: block;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 5px;
+  }
+
+  .type-toggle {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .type-btn {
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    text-align: center;
+    color: var(--text-dim);
+    transition: all .12s;
+  }
+  .type-btn.rise:hover, .type-btn.rise.active { border-color: var(--up); color: var(--up); background: rgba(61,220,132,0.06); }
+  .type-btn.fall:hover, .type-btn.fall.active { border-color: var(--down); color: var(--down); background: rgba(255,92,108,0.06); }
+
+  .contract-select {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .duration-row {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 6px;
+  }
+
+  .stake-quick {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+  }
+  .stake-quick button {
+    flex: 1;
+    padding: 5px;
+    border: 1px solid var(--line-soft);
+    border-radius: 3px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-faint);
+  }
+  .stake-quick button:hover { border-color: var(--text-dim); color: var(--text-dim); }
+
+  .payout-preview {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 12px;
+    margin: 4px 0 12px;
+  }
+  .payout-row {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 3px 0;
+    color: var(--text-dim);
+  }
+  .payout-row .v { color: var(--text); }
+  .payout-row.hero .v { color: var(--up); font-size: 15px; font-weight: 600; }
+
+  .confirm-btn {
+    width: 100%;
+    padding: 13px;
+    border-radius: 4px;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    border: 1px solid var(--up-dim);
+    color: #06120b;
+    background: var(--up);
+    transition: filter .12s;
+  }
+  .confirm-btn:hover { filter: brightness(1.08); }
+  .confirm-btn:disabled {
+    background: var(--panel-2);
+    color: var(--text-faint);
+    border-color: var(--line);
+    cursor: not-allowed;
+  }
+  .confirm-btn.fall-mode { background: var(--down); border-color: var(--down-dim); }
+
+  .risk-note {
+    font-size: 10.5px;
+    color: var(--text-faint);
+    margin-top: 8px;
+    line-height: 1.5;
+  }
+
+  /* Open positions + log */
+  .positions-list { display: flex; flex-direction: column; gap: 6px; }
+  .position-item {
+    background: var(--panel-2);
+    border: 1px solid var(--line-soft);
+    border-radius: 3px;
+    padding: 9px 10px;
+    font-family: var(--mono);
+    font-size: 11.5px;
+  }
+  .position-item .top-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  .position-item .sym { color: var(--text); font-weight: 600; }
+  .position-item .pl { font-weight: 600; }
+  .position-item .pl.pos { color: var(--up); }
+  .position-item .pl.neg { color: var(--down); }
+  .position-item .bottom-row {
+    display: flex;
+    justify-content: space-between;
+    color: var(--text-faint);
+    font-size: 10.5px;
+  }
+  .empty-state {
+    color: var(--text-faint);
+    font-size: 12px;
+    text-align: center;
+    padding: 20px 10px;
+    font-family: var(--mono);
+  }
+
+  /* Setup / connect modal */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(4,6,8,0.75);
+    backdrop-filter: blur(3px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  .modal {
+    width: 440px;
+    max-width: 92vw;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 28px;
+  }
+  .modal h2 {
+    font-size: 17px;
+    margin-bottom: 6px;
+    letter-spacing: -0.01em;
+  }
+  .modal .desc {
+    font-size: 12.5px;
+    color: var(--text-dim);
+    line-height: 1.6;
+    margin-bottom: 20px;
+  }
+  .modal .field label { color: var(--text-dim); }
+  .modal .field input { margin-top: 2px; }
+  .modal .helper-link {
+    font-size: 11px;
+    color: var(--text-faint);
+    margin-top: 4px;
+    display: block;
+  }
+  .modal .helper-link a { color: var(--up-dim); text-decoration: underline; }
+  .modal .warn-box {
+    background: rgba(232,162,61,0.06);
+    border: 1px solid rgba(232,162,61,0.25);
+    border-radius: 4px;
+    padding: 10px 12px;
+    font-size: 11.5px;
+    color: var(--amber);
+    line-height: 1.55;
+    margin: 16px 0;
+  }
+  .modal .connect-btn {
+    width: 100%;
+    padding: 12px;
+    background: var(--up);
+    color: #06120b;
+    border-radius: 4px;
+    font-weight: 600;
+    font-family: var(--mono);
+    font-size: 13px;
+    margin-top: 6px;
+  }
+  .modal .connect-btn:disabled { background: var(--panel-2); color: var(--text-faint); }
+  .modal .err-msg {
+    color: var(--down);
+    font-size: 12px;
+    margin-top: 10px;
+    font-family: var(--mono);
+  }
+
+  /* Confirm trade modal */
+  .confirm-modal .row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--line-soft);
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+  .confirm-modal .row .k { color: var(--text-dim); }
+  .confirm-modal .actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 18px;
+  }
+  .confirm-modal .actions button { flex: 1; padding: 11px; border-radius: 4px; font-family: var(--mono); font-weight: 600; font-size: 13px; }
+  .confirm-modal .cancel { border: 1px solid var(--line); color: var(--text-dim); }
+  .confirm-modal .go { background: var(--up); color: #06120b; }
+  .confirm-modal .go.fall { background: var(--down); }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    padding: 10px 18px;
+    border-radius: 5px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    z-index: 200;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  .toast.success { border-color: var(--up-dim); color: var(--up); }
+  .toast.error { border-color: var(--down-dim); color: var(--down); }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+
+  @media (max-width: 980px) {
+    main.grid { grid-template-columns: 1fr; grid-template-rows: auto auto auto; overflow-y: auto; }
+    aside.markets { grid-row: 1; max-height: 160px; border-right: none; border-bottom: 1px solid var(--line); }
+    section.chart-panel { grid-column: 1; grid-row: 2; border-right: none; height: 360px; }
+    section.analysis-panel { grid-column: 1; grid-row: 3; border-right: none; max-height: none; }
+    aside.ticket { grid-column: 1; grid-row: 4; }
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/**
+ * Minimal Deriv WebSocket API client.
+ * Docs: https://api.deriv.com  (wss://ws.derivws.com/websockets/v3)
+ * No data ever leaves the browser except direct traffic to Deriv's own servers.
+ */
+
+class DerivClient {
+  constructor() {
+    this.ws = null;
+    this.appId = null;
+    this.token = null;
+    this.reqId = 1;
+    this.pending = new Map();      // req_id -> {resolve, reject}
+    this.subscriptions = new Map(); // subscription_id -> callback
+    this.tickCallbacks = new Map(); // symbol -> Set(callback)
+    this.onOpenBalance = null;
+    this.onConnectionChange = null; // (status: 'connecting'|'open'|'authorized'|'closed'|'error', detail) => void
+    this.authorized = false;
+    this.accountInfo = null;
+    this._reconnectAttempts = 0;
+    this._manualClose = false;
+  }
+
+  connect(appId, token) {
+    this.appId = appId;
+    this.token = token;
+    this._manualClose = false;
+    return this._openSocket();
+  }
+
+  _openSocket() {
+    return new Promise((resolve, reject) => {
+      this._emitStatus('connecting');
+      const url = `wss://ws.derivws.com/websockets/v3?app_id=${encodeURIComponent(this.appId)}`;
+      let ws;
+      try {
+        ws = new WebSocket(url);
+      } catch (e) {
+        this._emitStatus('error', e.message);
+        reject(e);
+        return;
+      }
+      this.ws = ws;
+
+      ws.onopen = async () => {
+        this._reconnectAttempts = 0;
+        this._emitStatus('open');
+        try {
+          const authRes = await this.send({ authorize: this.token });
+          this.authorized = true;
+          this.accountInfo = authRes.authorize;
+          this._emitStatus('authorized', this.accountInfo);
+          resolve(this.accountInfo);
+        } catch (e) {
+          this._emitStatus('error', e.message || 'Authorization failed');
+          reject(e);
+        }
+      };
+
+      ws.onmessage = (msg) => this._handleMessage(msg);
+
+      ws.onerror = () => {
+        this._emitStatus('error', 'Connection error');
+      };
+
+      ws.onclose = () => {
+        this.authorized = false;
+        if (!this._manualClose) {
+          this._emitStatus('closed');
+          this._attemptReconnect();
+        }
+      };
+    });
+  }
+
+  _attemptReconnect() {
+    if (this._reconnectAttempts >= 5) return;
+    this._reconnectAttempts++;
+    const delay = Math.min(1000 * Math.pow(2, this._reconnectAttempts), 15000);
+    setTimeout(() => {
+      if (!this._manualClose) {
+        this._openSocket().catch(() => {});
+      }
+    }, delay);
+  }
+
+  _emitStatus(status, detail) {
+    if (this.onConnectionChange) this.onConnectionChange(status, detail);
+  }
+
+  disconnect() {
+    this._manualClose = true;
+    if (this.ws) this.ws.close();
+  }
+
+  _handleMessage(msg) {
+    let data;
+    try {
+      data = JSON.parse(msg.data);
+    } catch (e) {
+      return;
+    }
+
+    if (data.error) {
+      const reqId = data.req_id;
+      if (reqId && this.pending.has(reqId)) {
+        this.pending.get(reqId).reject(new Error(data.error.message || 'API error'));
+        this.pending.delete(reqId);
+      }
+      if (this._lastErrorCallback) this._lastErrorCallback(data.error);
+      return;
+    }
+
+    // Subscription stream messages (ticks, proposal_open_contract, etc.)
+    if (data.subscription && data.subscription.id) {
+      const subId = data.subscription.id;
+      if (this.subscriptions.has(subId)) {
+        this.subscriptions.get(subId)(data);
+      }
+    }
+
+    // Tick messages specifically, routed by symbol too (covers initial + stream)
+    if (data.tick) {
+      const sym = data.tick.symbol;
+      if (this.tickCallbacks.has(sym)) {
+        this.tickCallbacks.get(sym).forEach(cb => cb(data.tick));
+      }
+    }
+
+    // Resolve the original request promise
+    const reqId = data.req_id;
+    if (reqId && this.pending.has(reqId)) {
+      this.pending.get(reqId).resolve(data);
+      this.pending.delete(reqId);
+    }
+  }
+
+  send(payload, timeoutMs = 15000) {
+    return new Promise((resolve, reject) => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        reject(new Error('Not connected'));
+        return;
+      }
+      const reqId = this.reqId++;
+      const body = { ...payload, req_id: reqId };
+      this.pending.set(reqId, { resolve, reject });
+      this.ws.send(JSON.stringify(body));
+
+      setTimeout(() => {
+        if (this.pending.has(reqId)) {
+          this.pending.delete(reqId);
+          reject(new Error('Request timed out'));
+        }
+      }, timeoutMs);
+    });
+  }
+
+  /** Subscribe to live ticks for a symbol. Returns unsubscribe function. */
+  async subscribeTicks(symbol, callback) {
+    if (!this.tickCallbacks.has(symbol)) this.tickCallbacks.set(symbol, new Set());
+    this.tickCallbacks.get(symbol).add(callback);
+
+    const res = await this.send({ ticks: symbol, subscribe: 1 });
+    if (res.subscription && res.subscription.id) {
+      this.subscriptions.set(res.subscription.id, (data) => {
+        if (data.tick) callback(data.tick);
+      });
+      if (res.tick) callback(res.tick);
+      return res.subscription.id;
+    }
+    return null;
+  }
+
+  async unsubscribeTicks(symbol) {
+    this.tickCallbacks.delete(symbol);
+    try {
+      await this.send({ forget_all: 'ticks' });
+    } catch (e) { /* ignore */ }
+  }
+
+  /** Fetch historical candles/ticks for indicator warm-up and charting. */
+  async getHistory(symbol, count = 200, granularity = 60) {
+    const req = {
+      ticks_history: symbol,
+      adjust_start_time: 1,
+      count: count,
+      end: 'latest',
+      style: granularity > 0 ? 'candles' : 'ticks',
+    };
+    if (granularity > 0) req.granularity = granularity;
+    const res = await this.send(req);
+    if (res.candles) return res.candles;
+    if (res.history) {
+      // ticks style: {prices:[], times:[]}
+      return res.history.times.map((t, i) => ({
+        epoch: t,
+        price: parseFloat(res.history.prices[i]),
+      }));
+    }
+    return [];
+  }
+
+  async getActiveSymbols() {
+    const res = await this.send({ active_symbols: 'brief', product_type: 'basic' });
+    return res.active_symbols || [];
+  }
+
+  async getBalance() {
+    const res = await this.send({ balance: 1, subscribe: 0 });
+    return res.balance;
+  }
+
+  async subscribeBalance(callback) {
+    const res = await this.send({ balance: 1, subscribe: 1 });
+    if (res.subscription && res.subscription.id) {
+      this.subscriptions.set(res.subscription.id, (data) => {
+        if (data.balance) callback(data.balance);
+      });
+    }
+    if (res.balance) callback(res.balance);
+  }
+
+  /** Get a live price proposal for a contract before buying. */
+  async getProposal(params) {
+    const res = await this.send({ proposal: 1, ...params });
+    return res.proposal;
+  }
+
+  /** Buy a contract from a proposal id. */
+  async buyContract(proposalId, price) {
+    const res = await this.send({ buy: proposalId, price: price });
+    return res.buy;
+  }
+
+  /** Subscribe to updates on an open contract. */
+  async subscribeOpenContract(contractId, callback) {
+    const res = await this.send({ proposal_open_contract: 1, contract_id: contractId, subscribe: 1 });
+    if (res.subscription && res.subscription.id) {
+      this.subscriptions.set(res.subscription.id, (data) => {
+        if (data.proposal_open_contract) callback(data.proposal_open_contract);
+      });
+    }
+    if (res.proposal_open_contract) callback(res.proposal_open_contract);
+  }
+
+  async getPortfolio() {
+    const res = await this.send({ portfolio: 1 });
+    return res.portfolio ? res.portfolio.contracts : [];
+  }
+}
+
+
+/**
+ * Technical analysis engine for synthetic indices.
+ *
+ * IMPORTANT HONESTY NOTE (read before trusting any output of this file):
+ * Synthetic indices are generated by a random-number process with a fixed,
+ * published volatility. Short-horizon direction on this kind of series is
+ * very close to a coin flip; these indicators describe recent statistical
+ * *conditions* (momentum, dispersion, extremes) — they are not a forecast
+ * with a known edge, and none of this compensates for the payout structure's
+ * built-in house edge. Treat every score here as "what the last N ticks
+ * looked like," not "what happens next."
+ */
+
+const AnalysisEngine = (() => {
+
+  function sma(values, period) {
+    if (values.length < period) return null;
+    const slice = values.slice(-period);
+    return slice.reduce((a, b) => a + b, 0) / period;
+  }
+
+  function ema(values, period) {
+    if (values.length < period) return null;
+    const k = 2 / (period + 1);
+    let emaVal = sma(values.slice(0, period), period);
+    for (let i = period; i < values.length; i++) {
+      emaVal = values[i] * k + emaVal * (1 - k);
+    }
+    return emaVal;
+  }
+
+  function emaSeries(values, period) {
+    if (values.length < period) return [];
+    const out = [];
+    const k = 2 / (period + 1);
+    let emaVal = sma(values.slice(0, period), period);
+    out.push(emaVal);
+    for (let i = period; i < values.length; i++) {
+      emaVal = values[i] * k + emaVal * (1 - k);
+      out.push(emaVal);
+    }
+    return out;
+  }
+
+  function stddev(values, period) {
+    if (values.length < period) return null;
+    const slice = values.slice(-period);
+    const mean = slice.reduce((a, b) => a + b, 0) / period;
+    const variance = slice.reduce((a, b) => a + (b - mean) ** 2, 0) / period;
+    return Math.sqrt(variance);
+  }
+
+  function rsi(values, period = 14) {
+    if (values.length < period + 1) return null;
+    const slice = values.slice(-(period + 1));
+    let gains = 0, losses = 0;
+    for (let i = 1; i < slice.length; i++) {
+      const diff = slice[i] - slice[i - 1];
+      if (diff > 0) gains += diff;
+      else losses += Math.abs(diff);
+    }
+    const avgGain = gains / period;
+    const avgLoss = losses / period;
+    if (avgLoss === 0) return 100;
+    const rs = avgGain / avgLoss;
+    return 100 - 100 / (1 + rs);
+  }
+
+  function macd(values, fast = 12, slow = 26, signalPeriod = 9) {
+    if (values.length < slow + signalPeriod) return null;
+    const fastSeries = emaSeries(values, fast);
+    const slowSeries = emaSeries(values, slow);
+    const offset = fastSeries.length - slowSeries.length;
+    const macdLine = [];
+    for (let i = 0; i < slowSeries.length; i++) {
+      macdLine.push(fastSeries[i + offset] - slowSeries[i]);
+    }
+    if (macdLine.length < signalPeriod) return null;
+    const signalLine = emaSeries(macdLine, signalPeriod);
+    const hist = macdLine[macdLine.length - 1] - signalLine[signalLine.length - 1];
+    return {
+      macd: macdLine[macdLine.length - 1],
+      signal: signalLine[signalLine.length - 1],
+      histogram: hist,
+    };
+  }
+
+  function bollingerBands(values, period = 20, mult = 2) {
+    const mean = sma(values, period);
+    const sd = stddev(values, period);
+    if (mean === null || sd === null) return null;
+    return {
+      upper: mean + mult * sd,
+      middle: mean,
+      lower: mean - mult * sd,
+      bandwidth: (mult * sd * 2) / mean,
+    };
+  }
+
+  /** Linear regression slope over the last N points, normalized as % per point. */
+  function momentumSlope(values, period = 10) {
+    if (values.length < period) return null;
+    const slice = values.slice(-period);
+    const n = slice.length;
+    const xMean = (n - 1) / 2;
+    const yMean = slice.reduce((a, b) => a + b, 0) / n;
+    let num = 0, den = 0;
+    for (let i = 0; i < n; i++) {
+      num += (i - xMean) * (slice[i] - yMean);
+      den += (i - xMean) ** 2;
+    }
+    const slope = den === 0 ? 0 : num / den;
+    return (slope / yMean) * 100; // % change per tick
+  }
+
+  /** Count of consecutive same-direction ticks (streak), sign-aware. */
+  function currentStreak(values) {
+    if (values.length < 2) return 0;
+    let streak = 0;
+    let dir = 0;
+    for (let i = values.length - 1; i > 0; i--) {
+      const d = values[i] - values[i - 1];
+      const s = d > 0 ? 1 : d < 0 ? -1 : 0;
+      if (s === 0) break;
+      if (dir === 0) { dir = s; streak = 1; }
+      else if (s === dir) { streak++; }
+      else break;
+    }
+    return dir * streak;
+  }
+
+  /**
+   * Master analysis. Returns a structured signal object.
+   * `values` = array of recent prices (closes or ticks), oldest -> newest.
+   */
+  function analyze(values) {
+    if (!values || values.length < 30) {
+      return { ready: false, reason: 'Collecting data — need at least 30 ticks.' };
+    }
+
+    const last = values[values.length - 1];
+    const r = rsi(values, 14);
+    const macdRes = macd(values);
+    const bb = bollingerBands(values, 20, 2);
+    const slope = momentumSlope(values, 12);
+    const streak = currentStreak(values);
+    const sd = stddev(values, 20);
+    const volatilityPct = sd !== null ? (sd / last) * 100 : null;
+
+    // Each indicator casts a vote: +1 bullish, -1 bearish, 0 neutral,
+    // scaled by a confidence weight. This is a transparent heuristic
+    // scoring system, NOT a trained/backtested predictive model.
+    const votes = [];
+
+    if (r !== null) {
+      // RSI only fires as a contrarian vote at genuine extremes (>80/<20).
+      // Between 70-80 it sits in "confirms trend, not yet exhausted"
+      // territory and shouldn't fight momentum/MACD — a sustained trend
+      // legitimately keeps RSI elevated for long stretches without that
+      // being a reversal signal.
+      if (r > 80) votes.push({ name: 'RSI', dir: -1, weight: Math.min((r - 80) / 15, 1), note: `${r.toFixed(1)} — overbought` });
+      else if (r < 20) votes.push({ name: 'RSI', dir: 1, weight: Math.min((20 - r) / 15, 1), note: `${r.toFixed(1)} — oversold` });
+      else votes.push({ name: 'RSI', dir: 0, weight: 0, note: `${r.toFixed(1)} — neutral` });
+    }
+
+    if (macdRes !== null) {
+      const dir = macdRes.histogram > 0 ? 1 : macdRes.histogram < 0 ? -1 : 0;
+      // Normalize histogram against recent price level rather than against
+      // the MACD line itself, which can collapse toward zero (and blow up
+      // this ratio) on a near-perfectly linear run — a degenerate edge case
+      // with the old formula.
+      const refPrice = values[values.length - 1] || 1;
+      const weight = Math.min((Math.abs(macdRes.histogram) / refPrice) * 500, 1);
+      votes.push({ name: 'MACD', dir, weight, note: dir > 0 ? 'bullish cross' : dir < 0 ? 'bearish cross' : 'flat' });
+    }
+
+    if (bb !== null) {
+      const pctB = (last - bb.lower) / (bb.upper - bb.lower);
+      if (pctB > 0.95) votes.push({ name: 'Bollinger', dir: -1, weight: 0.6, note: 'at upper band' });
+      else if (pctB < 0.05) votes.push({ name: 'Bollinger', dir: 1, weight: 0.6, note: 'at lower band' });
+      else votes.push({ name: 'Bollinger', dir: 0, weight: 0, note: `${(pctB * 100).toFixed(0)}% of band` });
+    }
+
+    if (slope !== null) {
+      const dir = slope > 0.01 ? 1 : slope < -0.01 ? -1 : 0;
+      votes.push({ name: 'Momentum', dir, weight: Math.min(Math.abs(slope) * 8, 1), note: `${slope > 0 ? '+' : ''}${slope.toFixed(3)}%/tick` });
+    }
+
+    if (streak !== 0) {
+      // Mild mean-reversion prior: long streaks slightly favor reversal on
+      // these synthetic series, but weight is deliberately capped low.
+      const dir = streak > 3 ? -1 : streak < -3 ? 1 : 0;
+      votes.push({ name: 'Streak', dir, weight: dir !== 0 ? Math.min((Math.abs(streak) - 3) / 6, 0.5) : 0, note: `${Math.abs(streak)} ${streak > 0 ? 'up' : 'down'} in a row` });
+    }
+
+    let bullScore = 0, bearScore = 0, totalWeight = 0;
+    votes.forEach(v => {
+      if (v.dir > 0) bullScore += v.weight;
+      if (v.dir < 0) bearScore += v.weight;
+      totalWeight += v.weight;
+    });
+
+    const netScore = bullScore - bearScore;
+    const maxPossible = votes.length;
+    const confidence = maxPossible > 0 ? Math.min(Math.abs(netScore) / maxPossible, 1) : 0;
+
+    let direction = 'neutral';
+    if (netScore > 0.15) direction = 'up';
+    else if (netScore < -0.15) direction = 'down';
+
+    // Confidence is capped and framed as "condition strength", never as a
+    // win probability — because we have no calibrated backtest behind it.
+    const strengthLabel = confidence > 0.6 ? 'Strong' : confidence > 0.3 ? 'Moderate' : 'Weak';
+
+    return {
+      ready: true,
+      direction,           // 'up' | 'down' | 'neutral'
+      confidence,           // 0..1, condition strength — not a win probability
+      strengthLabel,
+      votes,
+      indicators: {
+        rsi: r,
+        macd: macdRes,
+        bollinger: bb,
+        momentumSlope: slope,
+        streak,
+        volatilityPct,
+      },
+      lastPrice: last,
+      sampleSize: values.length,
+    };
+  }
+
+  /**
+   * Maps a directional signal to a suggested Deriv contract type.
+   * Still requires the user to review and confirm manually.
+   */
+  function suggestContractType(analysis) {
+    if (!analysis.ready || analysis.direction === 'neutral') {
+      return { contractType: null, label: 'No clear signal', reason: 'Indicators are mixed or too weak to lean either way.' };
+    }
+    if (analysis.direction === 'up') {
+      return { contractType: 'CALL', label: 'Rise (CALL)', reason: 'Net indicator bias is bullish over the recent sample.' };
+    }
+    return { contractType: 'PUT', label: 'Fall (PUT)', reason: 'Net indicator bias is bearish over the recent sample.' };
+  }
+
+  return { analyze, suggestContractType, sma, ema, rsi, macd, bollingerBands, momentumSlope, currentStreak, stddev };
+})();
+
+
+/**
+ * Vantage — Synthetic Indices Terminal
+ * Main application: state, rendering, and wiring between DerivClient and AnalysisEngine.
+ *
+ * Loaded after deriv-client.js and analysis-engine.js (classic scripts, no bundler).
+ */
+
+const state = {
+  client: new DerivClient(),
+  connected: false,
+  authorizing: false,
+  connError: null,
+  account: null,
+  balance: null,
+  symbols: [
+    { symbol: 'R_10', display_name: 'Volatility 10 Index' },
+    { symbol: 'R_25', display_name: 'Volatility 25 Index' },
+    { symbol: 'R_50', display_name: 'Volatility 50 Index' },
+    { symbol: 'R_75', display_name: 'Volatility 75 Index' },
+    { symbol: 'R_100', display_name: 'Volatility 100 Index' },
+    { symbol: 'BOOM500', display_name: 'Boom 500 Index' },
+    { symbol: 'BOOM1000', display_name: 'Boom 1000 Index' },
+    { symbol: 'CRASH500', display_name: 'Crash 500 Index' },
+    { symbol: 'CRASH1000', display_name: 'Crash 1000 Index' },
+  ],
+  symbolMeta: {}, // symbol -> {lastPrice, prevPrice, change}
+  activeSymbol: 'R_100',
+  priceHistory: {}, // symbol -> [{epoch, price}]
+  maxHistory: 300,
+  timeframe: 60, // seconds per candle, for history fetch granularity (0 = raw ticks)
+  contractType: 'CALL', // CALL or PUT selection in ticket
+  duration: 5,
+  durationUnit: 't', // t = ticks, s = seconds, m = minutes
+  stake: 10,
+  currency: 'USD',
+  proposal: null,
+  proposalLoading: false,
+  openPositions: [], // {contract_id, symbol, contract_type, buy_price, current, ...}
+  pendingConfirm: null, // holds trade details awaiting user confirmation
+  toast: null,
+  analysis: { ready: false },
+  tickUnsub: null,
+};
+
+// ---------- Utility ----------
+
+function fmt(num, decimals = 2) {
+  if (num === null || num === undefined || isNaN(num)) return '—';
+  return Number(num).toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
+function showToast(message, type = 'success', duration = 3500) {
+  state.toast = { message, type };
+  render();
+  setTimeout(() => {
+    if (state.toast && state.toast.message === message) {
+      state.toast = null;
+      render();
+    }
+  }, duration);
+}
+
+function el(tag, attrs = {}, children = []) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === 'class') node.className = v;
+    else if (k.startsWith('on') && typeof v === 'function') node.addEventListener(k.slice(2), v);
+    else if (k === 'html') node.innerHTML = v;
+    else if (v !== null && v !== undefined) node.setAttribute(k, v);
+  }
+  (Array.isArray(children) ? children : [children]).forEach(c => {
+    if (c === null || c === undefined) return;
+    node.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  });
+  return node;
+}
+
+// ---------- Deriv connection wiring ----------
+
+state.client.onConnectionChange = (status, detail) => {
+  if (status === 'connecting') { state.connected = false; state.authorizing = true; }
+  if (status === 'open') { state.authorizing = true; }
+  if (status === 'authorized') {
+    state.connected = true;
+    state.authorizing = false;
+    state.connError = null;
+    state.account = detail;
+    onAuthorized();
+  }
+  if (status === 'error') {
+    state.authorizing = false;
+    state.connError = typeof detail === 'string' ? detail : 'Connection error';
+  }
+  if (status === 'closed') {
+    state.connected = false;
+  }
+  render();
+};
+
+async function onAuthorized() {
+  try {
+    await state.client.subscribeBalance((bal) => {
+      state.balance = bal;
+      render();
+    });
+  } catch (e) { /* non-fatal */ }
+
+  await loadSymbol(state.activeSymbol);
+  refreshPortfolio();
+}
+
+async function connectToDeriv(appId, token) {
+  state.connError = null;
+  render();
+  try {
+    await state.client.connect(appId, token);
+    localStorage.setItem('vantage_app_id', appId);
+    // Intentionally NOT persisting the API token to storage for safety;
+    // user re-enters it each session. See note in setup modal.
+  } catch (e) {
+    state.connError = e.message || 'Failed to connect. Check your App ID and token.';
+    render();
+  }
+}
+
+// ---------- Market data ----------
+
+async function loadSymbol(symbol) {
+  state.activeSymbol = symbol;
+  if (!state.priceHistory[symbol]) state.priceHistory[symbol] = [];
+
+  render();
+
+  if (!state.connected) return;
+
+  try {
+    const candles = await state.client.getHistory(symbol, 200, state.timeframe);
+    state.priceHistory[symbol] = candles.map(c => ({
+      epoch: c.epoch,
+      price: c.close !== undefined ? parseFloat(c.close) : parseFloat(c.price),
+    }));
+  } catch (e) {
+    console.warn('History fetch failed', e);
+  }
+
+  runAnalysis(symbol);
+  render();
+
+  subscribeToSymbolTicks(symbol);
+}
+
+function subscribeToSymbolTicks(symbol) {
+  state.client.subscribeTicks(symbol, (tick) => {
+    const price = parseFloat(tick.quote);
+    const meta = state.symbolMeta[symbol] || {};
+    state.symbolMeta[symbol] = {
+      lastPrice: price,
+      prevPrice: meta.lastPrice ?? price,
+      change: meta.lastPrice ? price - meta.lastPrice : 0,
+    };
+
+    if (symbol === state.activeSymbol) {
+      const hist = state.priceHistory[symbol] || [];
+      hist.push({ epoch: tick.epoch, price });
+      if (hist.length > state.maxHistory) hist.shift();
+      state.priceHistory[symbol] = hist;
+      runAnalysis(symbol);
+      updatePayoutPreview();
+    }
+    render();
+  }).catch(e => console.warn('Tick subscribe failed', e));
+}
+
+function runAnalysis(symbol) {
+  const hist = state.priceHistory[symbol] || [];
+  const values = hist.map(h => h.price);
+  state.analysis = AnalysisEngine.analyze(values);
+}
+
+// ---------- Trade ticket ----------
+
+let payoutDebounce = null;
+function updatePayoutPreview() {
+  if (!state.connected) return;
+  clearTimeout(payoutDebounce);
+  payoutDebounce = setTimeout(async () => {
+    state.proposalLoading = true;
+    render();
+    try {
+      const durationVal = parseInt(state.duration, 10);
+      const params = {
+        amount: parseFloat(state.stake) || 1,
+        basis: 'stake',
+        contract_type: state.contractType,
+        currency: state.currency,
+        duration: durationVal,
+        duration_unit: state.durationUnit,
+        symbol: state.activeSymbol,
+      };
+      const proposal = await state.client.getProposal(params);
+      state.proposal = proposal;
+    } catch (e) {
+      state.proposal = null;
+    }
+    state.proposalLoading = false;
+    render();
+  }, 450);
+}
+
+function openConfirm() {
+  if (!state.proposal) {
+    showToast('Get a live quote first — adjust stake or duration to refresh.', 'error');
+    return;
+  }
+  state.pendingConfirm = {
+    symbol: state.activeSymbol,
+    contractType: state.contractType,
+    stake: state.stake,
+    duration: state.duration,
+    durationUnit: state.durationUnit,
+    payout: state.proposal.payout,
+    proposalId: state.proposal.id,
+    askPrice: state.proposal.ask_price,
+  };
+  render();
+}
+
+async function executeConfirmedTrade() {
+  const pc = state.pendingConfirm;
+  if (!pc) return;
+  try {
+    const buyRes = await state.client.buyContract(pc.proposalId, pc.askPrice);
+    showToast(`Trade placed — contract #${buyRes.contract_id}`, 'success');
+    state.pendingConfirm = null;
+    trackOpenContract(buyRes.contract_id);
+    refreshPortfolio();
+  } catch (e) {
+    showToast(e.message || 'Trade failed', 'error');
+    state.pendingConfirm = null;
+  }
+  render();
+}
+
+function trackOpenContract(contractId) {
+  state.client.subscribeOpenContract(contractId, (poc) => {
+    const idx = state.openPositions.findIndex(p => p.contract_id === contractId);
+    const item = {
+      contract_id: poc.contract_id,
+      symbol: poc.underlying,
+      contract_type: poc.contract_type,
+      buy_price: poc.buy_price,
+      current_spot: poc.current_spot,
+      profit: poc.profit,
+      is_sold: poc.is_sold,
+      status: poc.status,
+      payout: poc.payout,
+    };
+    if (idx >= 0) state.openPositions[idx] = item;
+    else state.openPositions.unshift(item);
+
+    if (poc.is_sold) {
+      const won = poc.profit > 0;
+      showToast(
+        `Contract #${poc.contract_id} closed — ${won ? 'profit' : 'loss'} ${fmt(poc.profit)} ${state.currency}`,
+        won ? 'success' : 'error'
+      );
+    }
+    render();
+  }).catch(() => {});
+}
+
+async function refreshPortfolio() {
+  if (!state.connected) return;
+  try {
+    const contracts = await state.client.getPortfolio();
+    state.openPositions = contracts.map(c => ({
+      contract_id: c.contract_id,
+      symbol: c.symbol,
+      contract_type: c.contract_type,
+      buy_price: c.buy_price,
+      current_spot: null,
+      profit: null,
+      is_sold: false,
+      payout: c.payout,
+    }));
+    contracts.forEach(c => trackOpenContract(c.contract_id));
+    render();
+  } catch (e) { /* ignore */ }
+}
+
+// ---------- Chart rendering (canvas) ----------
+
+function drawChart(canvas, history, analysis) {
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  ctx.clearRect(0, 0, W, H);
+
+  if (!history || history.length < 2) {
+    ctx.fillStyle = '#4a5761';
+    ctx.font = '12px monospace';
+    ctx.fillText('Waiting for price data…', 16, 24);
+    return;
+  }
+
+  const prices = history.map(h => h.price);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const pad = (max - min) * 0.12 || max * 0.001;
+  const yMin = min - pad, yMax = max + pad;
+
+  const padL = 8, padR = 60, padT = 16, padB = 24;
+  const plotW = W - padL - padR;
+  const plotH = H - padT - padB;
+
+  const xFor = (i) => padL + (i / (prices.length - 1)) * plotW;
+  const yFor = (p) => padT + (1 - (p - yMin) / (yMax - yMin)) * plotH;
+
+  // grid lines
+  ctx.strokeStyle = '#1a2129';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = padT + (i / 4) * plotH;
+    ctx.beginPath();
+    ctx.moveTo(padL, y);
+    ctx.lineTo(W - padR, y);
+    ctx.stroke();
+  }
+
+  // Bollinger bands if available
+  if (analysis && analysis.ready && analysis.indicators.bollinger) {
+    const bb = analysis.indicators.bollinger;
+    ctx.strokeStyle = 'rgba(124,138,150,0.35)';
+    ctx.setLineDash([3, 3]);
+    [bb.upper, bb.lower].forEach(v => {
+      const y = yFor(v);
+      if (y > padT && y < H - padB) {
+        ctx.beginPath();
+        ctx.moveTo(padL, y);
+        ctx.lineTo(W - padR, y);
+        ctx.stroke();
+      }
+    });
+    ctx.setLineDash([]);
+  }
+
+  // price line
+  const lastPrice = prices[prices.length - 1];
+  const firstPrice = prices[0];
+  const isUp = lastPrice >= firstPrice;
+  ctx.strokeStyle = isUp ? '#3ddc84' : '#ff5c6c';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  prices.forEach((p, i) => {
+    const x = xFor(i), y = yFor(p);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // fill under line
+  const grad = ctx.createLinearGradient(0, padT, 0, H - padB);
+  grad.addColorStop(0, isUp ? 'rgba(61,220,132,0.14)' : 'rgba(255,92,108,0.14)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.lineTo(xFor(prices.length - 1), H - padB);
+  ctx.lineTo(xFor(0), H - padB);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // last price label
+  ctx.fillStyle = isUp ? '#3ddc84' : '#ff5c6c';
+  ctx.font = '600 12px monospace';
+  const priceLabel = lastPrice < 10 ? lastPrice.toFixed(4) : lastPrice.toFixed(2);
+  ctx.fillText(priceLabel, W - padR + 8, yFor(lastPrice) + 4);
+
+  // y-axis labels
+  ctx.fillStyle = '#4a5761';
+  ctx.font = '10px monospace';
+  [yMax, (yMax + yMin) / 2, yMin].forEach(v => {
+    ctx.fillText(v < 10 ? v.toFixed(4) : v.toFixed(2), W - padR + 8, yFor(v) + 3);
+  });
+}
+
+// ---------- Render ----------
+
+function render() {
+  const root = document.getElementById('app');
+  root.innerHTML = '';
+
+  if (!state.connected) {
+    root.appendChild(renderSetupScreen());
+    return;
+  }
+
+  root.appendChild(renderTopbar());
+  const main = el('main', { class: 'grid' }, [
+    renderMarketsList(),
+    renderChartPanel(),
+    renderAnalysisPanel(),
+    renderTicket(),
+  ]);
+  root.appendChild(main);
+
+  if (state.pendingConfirm) root.appendChild(renderConfirmModal());
+  if (state.toast) root.appendChild(el('div', { class: `toast ${state.toast.type}` }, state.toast.message));
+
+  // Chart needs canvas sized after DOM insert
+  requestAnimationFrame(() => {
+    const canvas = document.getElementById('chartCanvas');
+    drawChart(canvas, state.priceHistory[state.activeSymbol], state.analysis);
+  });
+}
+
+function renderSetupScreen() {
+  const overlay = el('div', { class: 'modal-overlay' });
+  const savedAppId = localStorage.getItem('vantage_app_id') || '';
+
+  let appIdInput, tokenInput;
+
+  const modal = el('div', { class: 'modal' }, [
+    el('h2', {}, 'Connect to Deriv'),
+    el('p', { class: 'desc' },
+      'Enter your Deriv App ID and API token. The connection runs directly from this browser to Deriv\'s servers — your token is never sent anywhere else, and it is not saved to disk.'),
+    el('div', { class: 'field' }, [
+      el('label', {}, 'App ID'),
+      appIdInput = el('input', { type: 'text', placeholder: 'e.g. 1089', value: savedAppId }),
+      el('span', { class: 'helper-link' }, [
+        'Don\'t have one? Register at ',
+        el('a', { href: 'https://api.deriv.com/', target: '_blank', rel: 'noopener' }, 'api.deriv.com'),
+      ]),
+    ]),
+    el('div', { class: 'field' }, [
+      el('label', {}, 'API Token'),
+      tokenInput = el('input', { type: 'password', placeholder: 'Read + Trade scope token' }),
+      el('span', { class: 'helper-link' }, 'Create one in your Deriv account under Settings → API Token. Enable "Read" and "Trade" scopes only — avoid "Withdraw" or "Admin".'),
+    ]),
+    el('div', { class: 'warn-box' },
+      'This connects to your real or demo Deriv account and can place live trades once you confirm them. Start on a demo account until you\'re comfortable with how signals behave. No analysis here guarantees a profitable outcome — synthetic index contracts carry a built-in house edge.'),
+    (() => {
+      const btn = el('button', { class: 'connect-btn' }, state.authorizing ? 'Connecting…' : 'Connect');
+      btn.disabled = state.authorizing;
+      btn.addEventListener('click', () => {
+        const appId = appIdInput.value.trim();
+        const token = tokenInput.value.trim();
+        if (!appId || !token) {
+          state.connError = 'Both App ID and API token are required.';
+          render();
+          return;
+        }
+        connectToDeriv(appId, token);
+      });
+      return btn;
+    })(),
+    state.connError ? el('div', { class: 'err-msg' }, state.connError) : null,
+  ]);
+
+  overlay.appendChild(modal);
+  return overlay;
+}
+
+function renderTopbar() {
+  const acc = state.account;
+  const bal = state.balance;
+  return el('header', { class: 'topbar' }, [
+    el('div', { class: 'brand' }, [
+      el('div', { class: 'mark' }, el('svg', { viewBox: '0 0 18 18', html: `<path d="M2 14L7 4L11 11L16 2" stroke="#3ddc84" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>` })),
+      'Vantage',
+    ]),
+    el('div', { class: 'conn-status' }, [
+      el('span', {}, [
+        el('span', { class: `dot ${state.connected ? 'live' : 'err'}` }),
+        state.connected ? `Live · ${acc ? acc.loginid : ''}` : 'Disconnected',
+      ]),
+      acc && acc.is_virtual ? el('span', {}, 'DEMO') : (acc ? el('span', {}, 'REAL') : null),
+    ]),
+    el('div', { class: 'topbar-actions' }, [
+      bal ? el('div', { class: 'balance-pill' }, [
+        el('span', { class: 'amt' }, `${fmt(bal.balance)} ${bal.currency}`),
+      ]) : null,
+      el('button', {
+        class: 'btn', onclick: () => {
+          state.client.disconnect();
+          state.connected = false;
+          render();
+        }
+      }, 'Disconnect'),
+    ]),
+  ]);
+}
+
+function renderMarketsList() {
+  const items = state.symbols.map(s => {
+    const meta = state.symbolMeta[s.symbol] || {};
+    const isActive = s.symbol === state.activeSymbol;
+    const changeDir = meta.change > 0 ? 'up' : meta.change < 0 ? 'down' : '';
+    return el('div', {
+      class: `market-item ${isActive ? 'active' : ''}`,
+      onclick: () => loadSymbol(s.symbol),
+    }, [
+      el('div', { class: 'name' }, s.display_name),
+      el('div', { class: 'row2' }, [
+        el('span', {}, meta.lastPrice ? fmt(meta.lastPrice, meta.lastPrice < 10 ? 4 : 2) : '—'),
+        el('span', { class: `chg ${changeDir}` }, meta.change ? `${meta.change > 0 ? '+' : ''}${fmt(meta.change, 4)}` : ''),
+      ]),
+    ]);
+  });
+  return el('aside', { class: 'markets' }, [
+    el('div', { class: 'markets-head' }, 'SYNTHETIC INDICES'),
+    ...items,
+  ]);
+}
+
+function renderChartPanel() {
+  const meta = state.symbolMeta[state.activeSymbol] || {};
+  const symObj = state.symbols.find(s => s.symbol === state.activeSymbol);
+  const dir = meta.change > 0 ? 'up' : meta.change < 0 ? 'down' : '';
+
+  const timeframes = [
+    { label: '1m', v: 60 }, { label: '5m', v: 300 }, { label: '15m', v: 900 }, { label: 'Ticks', v: 0 },
+  ];
+
+  return el('section', { class: 'chart-panel' }, [
+    el('div', { class: 'chart-head' }, [
+      el('div', {}, [
+        el('span', { class: 'sym' }, symObj ? symObj.display_name : state.activeSymbol),
+        el('span', { class: `price ${dir}` }, meta.lastPrice ? fmt(meta.lastPrice, meta.lastPrice < 10 ? 4 : 2) : '—'),
+      ]),
+      el('div', { class: 'meta' }, [
+        el('span', {}, `Samples: ${(state.priceHistory[state.activeSymbol] || []).length}`),
+      ]),
+    ]),
+    el('canvas', { id: 'chartCanvas' }),
+    el('div', { class: 'chart-footer' }, timeframes.map(tf =>
+      el('button', {
+        class: `tf-btn ${state.timeframe === tf.v ? 'active' : ''}`,
+        onclick: () => { state.timeframe = tf.v; loadSymbol(state.activeSymbol); },
+      }, tf.label)
+    )),
+  ]);
+}
+
+function indCell(label, value, cls) {
+  return el('div', { class: 'ind-cell' }, [
+    el('div', { class: 'k' }, label),
+    el('div', { class: `v ${cls || ''}` }, value),
+  ]);
+}
+
+function renderAnalysisPanel() {
+  const a = state.analysis;
+
+  if (!a || !a.ready) {
+    return el('section', { class: 'analysis-panel' }, [
+      el('div', { class: 'analysis-head' }, el('h2', {}, 'ANALYSIS')),
+      el('div', { class: 'empty-state' }, (a && a.reason) || 'Waiting for data…'),
+    ]);
+  }
+
+  const dirColor = a.direction === 'up' ? 'up' : a.direction === 'down' ? 'down' : '';
+  const dirLabel = a.direction === 'up' ? 'Bullish lean' : a.direction === 'down' ? 'Bearish lean' : 'No clear lean';
+  const suggestion = AnalysisEngine.suggestContractType(a);
+  const confPct = Math.round(a.confidence * 100);
+  const barColor = a.direction === 'up' ? '#3ddc84' : a.direction === 'down' ? '#ff5c6c' : '#4a5761';
+
+  const ind = a.indicators;
+
+  return el('section', { class: 'analysis-panel' }, [
+    el('div', { class: 'analysis-head' }, [
+      el('h2', {}, 'ANALYSIS — CONDITION SCORE'),
+      el('span', { class: 'sample-note' }, `n=${a.sampleSize} ticks`),
+    ]),
+    el('div', { class: 'signal-row' }, [
+      el('div', { class: 'signal-card lead' }, [
+        el('div', { class: 'label' }, 'SIGNAL'),
+        el('div', { class: `value ${dirColor}` }, dirLabel),
+        el('div', { class: 'sub' }, `${a.strengthLabel} · ${confPct}% condition strength`),
+        el('div', { class: 'conf-bar-track' }, el('div', { class: 'conf-bar-fill', style: `width:${confPct}%; background:${barColor}` })),
+      ]),
+      el('div', { class: 'signal-card' }, [
+        el('div', { class: 'label' }, 'SUGGESTED CONTRACT'),
+        el('div', { class: `value ${suggestion.contractType === 'CALL' ? 'up' : suggestion.contractType === 'PUT' ? 'down' : ''}` }, suggestion.label),
+        el('div', { class: 'sub' }, suggestion.reason),
+        suggestion.contractType ? el('button', {
+          class: 'btn primary', style: 'margin-top:8px; width:100%; text-align:center;',
+          onclick: () => { state.contractType = suggestion.contractType; updatePayoutPreview(); render(); },
+        }, 'Apply to ticket') : null,
+      ]),
+    ]),
+    el('div', { class: 'indicators-grid' }, [
+      indCell('RSI (14)', ind.rsi !== null ? ind.rsi.toFixed(1) : '—', ind.rsi > 70 ? 'bear' : ind.rsi < 30 ? 'bull' : 'neutral'),
+      indCell('MACD Hist', ind.macd ? ind.macd.histogram.toFixed(4) : '—', ind.macd ? (ind.macd.histogram > 0 ? 'bull' : 'bear') : 'neutral'),
+      indCell('Momentum', ind.momentumSlope !== null ? `${ind.momentumSlope > 0 ? '+' : ''}${ind.momentumSlope.toFixed(3)}%` : '—', ind.momentumSlope > 0 ? 'bull' : ind.momentumSlope < 0 ? 'bear' : 'neutral'),
+      indCell('Streak', ind.streak !== 0 ? `${Math.abs(ind.streak)} ${ind.streak > 0 ? '↑' : '↓'}` : '—', 'neutral'),
+      indCell('Volatility', ind.volatilityPct !== null ? `${ind.volatilityPct.toFixed(3)}%` : '—', 'neutral'),
+      indCell('BB Width', ind.bollinger ? `${(ind.bollinger.bandwidth * 100).toFixed(2)}%` : '—', 'neutral'),
+      indCell('BB Upper', ind.bollinger ? fmt(ind.bollinger.upper, 4) : '—', 'neutral'),
+      indCell('BB Lower', ind.bollinger ? fmt(ind.bollinger.lower, 4) : '—', 'neutral'),
+    ]),
+    el('div', { class: 'disclaimer-strip' },
+      'These are statistical read-outs of recent price action, not a forecast. Synthetic indices are generated at a fixed published volatility, and options pricing already bakes in a house edge — no indicator combination overcomes that consistently. Use this as one input, size positions conservatively, and never trade money you can\'t afford to lose.'),
+  ]);
+}
+
+function renderTicket() {
+  const proposal = state.proposal;
+  const stakeVal = state.stake;
+
+  const durationUnitOptions = [
+    { v: 't', label: 'Ticks' },
+    { v: 's', label: 'Seconds' },
+    { v: 'm', label: 'Minutes' },
+  ];
+
+  return el('aside', { class: 'ticket' }, [
+    el('div', { class: 'ticket-section' }, [
+      el('h3', {}, 'TRADE TICKET'),
+      el('div', { class: 'type-toggle' }, [
+        el('div', {
+          class: `type-btn rise ${state.contractType === 'CALL' ? 'active' : ''}`,
+          onclick: () => { state.contractType = 'CALL'; updatePayoutPreview(); render(); },
+        }, '▲ Rise'),
+        el('div', {
+          class: `type-btn fall ${state.contractType === 'PUT' ? 'active' : ''}`,
+          onclick: () => { state.contractType = 'PUT'; updatePayoutPreview(); render(); },
+        }, '▼ Fall'),
+      ]),
+      el('div', { class: 'field' }, [
+        el('label', {}, 'Stake'),
+        (() => {
+          const input = el('input', { type: 'number', min: '0.35', step: '0.01', value: stakeVal });
+          input.addEventListener('input', (e) => { state.stake = e.target.value; updatePayoutPreview(); });
+          return input;
+        })(),
+        el('div', { class: 'stake-quick' }, [5, 10, 25, 50].map(v =>
+          el('button', { onclick: () => { state.stake = v; updatePayoutPreview(); render(); } }, `${v}`)
+        )),
+      ]),
+      el('div', { class: 'field' }, [
+        el('label', {}, 'Duration'),
+        el('div', { class: 'duration-row' }, [
+          (() => {
+            const input = el('input', { type: 'number', min: '1', value: state.duration });
+            input.addEventListener('input', (e) => { state.duration = e.target.value; updatePayoutPreview(); });
+            return input;
+          })(),
+          (() => {
+            const select = el('select', {}, durationUnitOptions.map(o =>
+              el('option', { value: o.v, selected: o.v === state.durationUnit ? 'selected' : null }, o.label)
+            ));
+            select.value = state.durationUnit;
+            select.addEventListener('change', (e) => { state.durationUnit = e.target.value; updatePayoutPreview(); });
+            return select;
+          })(),
+        ]),
+      ]),
+      el('div', { class: 'payout-preview' }, [
+        el('div', { class: 'payout-row' }, [el('span', {}, 'Stake'), el('span', { class: 'v' }, `${fmt(stakeVal)} ${state.currency}`)]),
+        el('div', { class: 'payout-row' }, [
+          el('span', {}, 'Payout if correct'),
+          el('span', { class: 'v' }, state.proposalLoading ? '…' : (proposal ? `${fmt(proposal.payout)} ${state.currency}` : '—')),
+        ]),
+        el('div', { class: 'payout-row hero' }, [
+          el('span', {}, 'Potential profit'),
+          el('span', { class: 'v' }, state.proposalLoading ? '…' : (proposal ? `+${fmt(proposal.payout - proposal.ask_price)} ${state.currency}` : '—')),
+        ]),
+      ]),
+      (() => {
+        const btn = el('button', {
+          class: `confirm-btn ${state.contractType === 'PUT' ? 'fall-mode' : ''}`,
+          onclick: openConfirm,
+        }, `Review ${state.contractType === 'CALL' ? 'Rise' : 'Fall'} Trade`);
+        btn.disabled = !proposal || state.proposalLoading;
+        return btn;
+      })(),
+      el('div', { class: 'risk-note' }, 'Every trade requires a final confirmation step. Nothing executes automatically.'),
+    ]),
+    el('div', { class: 'ticket-section' }, [
+      el('h3', {}, 'OPEN POSITIONS'),
+      renderPositions(),
+    ]),
+  ]);
+}
+
+function renderPositions() {
+  if (!state.openPositions.length) {
+    return el('div', { class: 'empty-state' }, 'No open positions.');
+  }
+  return el('div', { class: 'positions-list' }, state.openPositions.slice(0, 15).map(p => {
+    const plClass = p.profit > 0 ? 'pos' : p.profit < 0 ? 'neg' : '';
+    return el('div', { class: 'position-item' }, [
+      el('div', { class: 'top-row' }, [
+        el('span', { class: 'sym' }, `${p.symbol} · ${p.contract_type}`),
+        el('span', { class: `pl ${plClass}` }, p.profit !== null && p.profit !== undefined ? `${p.profit > 0 ? '+' : ''}${fmt(p.profit)}` : '—'),
+      ]),
+      el('div', { class: 'bottom-row' }, [
+        el('span', {}, `Buy ${fmt(p.buy_price)}`),
+        el('span', {}, p.is_sold ? 'Closed' : 'Open'),
+      ]),
+    ]);
+  }));
+}
+
+function renderConfirmModal() {
+  const pc = state.pendingConfirm;
+  const overlay = el('div', { class: 'modal-overlay' });
+  const isFall = pc.contractType === 'PUT';
+  const modal = el('div', { class: 'modal confirm-modal' }, [
+    el('h2', {}, `Confirm ${isFall ? 'Fall' : 'Rise'} trade`),
+    el('p', { class: 'desc' }, `${pc.symbol} · ${pc.duration}${pc.durationUnit}`),
+    el('div', { class: 'row' }, [el('span', { class: 'k' }, 'Stake'), el('span', {}, `${fmt(pc.stake)} ${state.currency}`)]),
+    el('div', { class: 'row' }, [el('span', { class: 'k' }, 'Potential payout'), el('span', {}, `${fmt(pc.payout)} ${state.currency}`)]),
+    el('div', { class: 'row' }, [el('span', { class: 'k' }, 'Potential profit'), el('span', {}, `+${fmt(pc.payout - pc.askPrice)} ${state.currency}`)]),
+    el('div', { class: 'row' }, [el('span', { class: 'k' }, 'Max loss'), el('span', {}, `${fmt(pc.askPrice)} ${state.currency}`)]),
+    el('div', { class: 'actions' }, [
+      el('button', { class: 'cancel', onclick: () => { state.pendingConfirm = null; render(); } }, 'Cancel'),
+      el('button', { class: `go ${isFall ? 'fall' : ''}`, onclick: executeConfirmedTrade }, 'Place Trade'),
+    ]),
+  ]);
+  overlay.appendChild(modal);
+  return overlay;
+}
+
+// ---------- Init ----------
+
+render();
+
+</script>
+</body>
+</html>
